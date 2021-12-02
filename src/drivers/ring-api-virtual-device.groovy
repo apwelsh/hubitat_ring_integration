@@ -500,33 +500,88 @@ def parse(String description) {
     List deviceInfos
 
     if (json[0] == "DataUpdate") {
-      // Only create device infos for devices that were selected in the app
-      if (getCreateableHubs().contains(json[1].context.assetKind)) {
-        deviceInfos = extractDeviceInfos(json[1])
-      }
-      //else {
-      //  logTrace "Discarded update from hub ${json[1].context.assetKind}"
-      //}
-    }
-    else if (json[0] == "message") {
-      if (json[1].msg == "DeviceInfoDocGetList" && json[1].datatype == "DeviceInfoDocType") {
-        final String assetKind = json[1].context.assetKind
-        final String assetId = json[1].context.assetId
-
-        // Only create device infos for devices that were selected in the app
-        final HashSet<String> createableHubs = state.createableHubs
-        if (createableHubs.contains(assetKind)) {
-          deviceInfos = extractDeviceInfos(json[1])
-          // If the hub for these device infos doesn't exist then create it
-          if (!getChildByZID(assetId)) {
-            createDevice([deviceType: assetKind, zid: assetId, src: json[1].src])
-            //might as well create the devices
-            state.createDevices = true
+      final String datatype = json[1].datatype
+      
+      if (datatype == "SystemStatusType") {
+        for (final Map systemStatus in json[1].body) {
+          final String statusString = systemStatus.statusString
+          
+          if (statusString == "device.find.configuring.begin") {
+            logDebug "Ring Alarm hub is starting to configure a new device"
+            
+          } else if (statusString == "device.find.configuring.finished") {
+            log.warn("Ring Alarm hub has finished configuring a new device. To add this device to hubitat, run 'createDevices' in the 'Ring API Virtual Device'")
+            
+          } else if (statusString == "device.find.listening") {
+            logDebug "Ring Alarm hub is listening for new devices"
+            
+          } else if (statusString == "device.find.initialize") {
+            logDebug "Ring Alarm hub is getting ready to initialize a new device"
+            
+          } else if (statusString.startsWith("device.find.error")) {
+            logDebug "Ring alarm hub encountered a ${statusString} error while configuring a new device"
+            
+          } else if (statusString == "device.remove.initialize") {
+            logDebug "Ring Alarm hub is getting ready to remove a device"
+            
+          } else if (statusString == "device.remove.listening") {
+            logDebug "Ring Alarm hub is listening for a device to remove"
+            
+          } else if (statusString == "device.remove.done") {
+            logDebug "Ring Alarm hub finished removing a device"
+          
+          } else if (statusString.startsWith("device.remove.error")) {
+            logDebug "Ring alarm hub encountered a ${statusString} error while removing a new device"
+          
+          } else {
+            log.warn ("Got an unsupported DataUpdate.SystemStatusType: ${JsonOutput.prettyPrint(JsonOutput.toJson(systemStatus))}")
           }
         }
+        
+      } else if (IGNORED_DATA_UPDATE_MSG_TYPES.contains(datatype)) {
+        logDebug ("Ignoring DataUpdate with datatype '${datatype}")
+ 
+      } else {
+        if (datatype != "DeviceInfoDocType") {
+          log.warn ("Got DataUpdate with datatype ${datatype}")
+        }
+      
+        // Only create device infos for devices that were selected in the app
+        if (getCreateableHubs().contains(json[1].context.assetKind)) {
+          deviceInfos = extractDeviceInfos(json[1])
+        }
         //else {
-        //  logTrace "Discarded device list from hub ${json[1].context.assetKind}"
+        //  logTrace "Discarded update from hub ${json[1].context.assetKind}"
         //}
+      }
+    }
+    else if (json[0] == "message") {
+      if (json[1].msg == "DeviceInfoDocGetList") {
+        if (json[1].datatype == "DeviceInfoDocType") {
+          final String assetKind = json[1].context.assetKind
+          final String assetId = json[1].context.assetId
+
+          // Only create device infos for devices that were selected in the app
+          final HashSet<String> createableHubs = state.createableHubs
+          if (createableHubs.contains(assetKind)) {
+            deviceInfos = extractDeviceInfos(json[1])
+            // If the hub for these device infos doesn't exist then create it
+            if (!getChildByZID(assetId)) {
+              createDevice([deviceType: assetKind, zid: assetId, src: json[1].src])
+              //might as well create the devices
+              state.createDevices = true
+            }
+          }
+          //else {
+          //  logTrace "Discarded device list from hub ${json[1].context.assetKind}"
+          //}
+        } else if (json[1].context?.uiConnection != null) {
+          logDebug "Received weird DeviceInfoDocGetList with no datatype. Ignoring"
+          logTrace description
+        } else {
+          log.warn "Received unsupported DeviceInfoDocGetList"
+          log.warn description
+        }
       }
       else if (json[1].msg == "DeviceInfoSet") {
         if (json[1].status == 0) {
@@ -547,7 +602,7 @@ def parse(String description) {
         }
       }
       else {
-        log.warn "huh? what's this?"
+        log.warn "Received unsupported json[1].msg: ${json[1].msg}"
         log.warn description
       }
     }
@@ -560,7 +615,7 @@ def parse(String description) {
       //reconnectWebSocket()
     }
     else {
-      log.warn "huh? what's this?"
+      log.warn "Received unsupported json[0] ${json[0]}"
       log.warn description
     }
 
@@ -620,9 +675,6 @@ List extractDeviceInfos(final Map json) {
 
   final String msg = json.msg
 
-  if (IGNORED_MSG_TYPES.contains(msg)) {
-    return
-  }
   if (msg != "DataUpdate" && msg != "DeviceInfoDocGetList") {
     logTrace "msg type: ${msg}"
     logTrace "json: ${JsonOutput.prettyPrint(JsonOutput.toJson(json))}"
@@ -907,7 +959,7 @@ boolean isHub(final String kind) {
   "adapter.ringnet": [name: "Ring Beams Ringnet Adapter", hidden: true]
 ]
 
-@Field final static HashSet<String> IGNORED_MSG_TYPES = [
+@Field final static HashSet<String> IGNORED_DATA_UPDATE_MSG_TYPES = [
   "SessionInfo",
   "SubscriptionTopicsInfo"
 ]
