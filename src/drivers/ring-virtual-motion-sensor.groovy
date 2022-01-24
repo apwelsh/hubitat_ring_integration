@@ -60,6 +60,26 @@ void setValues(final Map deviceInfo) {
       checkChanged("motion", deviceInfoState.faulted ? "active" : "inactive")
     }
   }
+  
+  if (deviceInfo.pending != null) {
+    final Map deviceInfoPending = deviceInfo.pending
+    
+    if (deviceInfoPending != null) {
+      if (deviceInfoPending.sensitivity != null) {
+        String expectedWakeup = 'unknown'
+      
+        if (deviceInfo.nextExpectedWakeup) {
+            expectedWakeup = new Date(deviceInfo.nextExpectedWakeup).toString()
+        }
+
+        logInfo "Device ${device.label} will set 'Sensitivity' to ${MOTION_SENSITIVITY[deviceInfoPending.sensitivity]} on ${expectedWakeup}"
+      }
+      
+      if (deviceInfoPending.commands) {
+        logDebug "Device ${device.label} will set the commands ${deviceInfoPending.commands} on next wakeup"
+      }
+    }
+  }
 
   if (deviceInfo.batteryLevel != null) {
     checkChanged("battery", deviceInfo.batteryLevel, "%")
