@@ -13,6 +13,8 @@
  *  for the specific language governing permissions and limitations under the License.
  */
 
+import groovy.transform.Field
+
 metadata {
   definition(name: "Ring Virtual Motion Sensor", namespace: "ring-hubitat-codahq", author: "Ben Rimmasch",
     importUrl: "https://raw.githubusercontent.com/codahq/ring_hubitat_codahq/master/src/drivers/ring-virtual-motion-sensor.groovy") {
@@ -23,6 +25,9 @@ metadata {
     capability "TamperAlert"
 
     attribute "lastCheckin", "string"
+    attribute "sensitivity", "enum", ["low", "medium", "high"]
+
+    command "setSensitivity", [[name: "mode", type: "ENUM", constraints: ["low", "medium", "high"], description: "Set motion sensor sensitivity. WARNING: This setting does not apply immediately. May take up to 12 hours to apply. To apply immediately, open the device cover, wait for LED to stop blinking, then close the cover."]]
   }
 
   preferences {
@@ -44,6 +49,25 @@ def logTrace(msg) {
   if (traceLogEnable) log.trace msg
 }
 
+def setSensitivity(sensitivity) {
+  Integer ringSensitivity
+
+  for (it in MOTION_SENSITIVITY) {
+    if (it.value == sensitivity) {
+      ringSensitivity = it.key
+      break
+    }
+  }
+
+  if (ringSensitivity == null) {
+    log.error "Could not map ${sensitivity} to value ring expects"
+    return
+  }
+
+  logDebug "Attempting to set sensitivity to ${sensitivity}"
+  parent.simpleRequest("setdevice", [zid: device.getDataValue("zid"), dst: null, data: [sensitivity: ringSensitivity]])
+}
+
 def refresh() {
   logDebug "Attempting to refresh."
   //parent.simpleRequest("refresh-device", [dni: device.deviceNetworkId])
@@ -59,22 +83,26 @@ void setValues(final Map deviceInfo) {
     if (deviceInfoState.faulted != null) {
       checkChanged("motion", deviceInfoState.faulted ? "active" : "inactive")
     }
+
+    if (deviceInfoState.sensitivity != null) {
+      checkChanged("sensitivity", MOTION_SENSITIVITY[deviceInfoState.sensitivity])
+    }
   }
-  
+
   if (deviceInfo.pending != null) {
     final Map deviceInfoPending = deviceInfo.pending
-    
+
     if (deviceInfoPending != null) {
       if (deviceInfoPending.sensitivity != null) {
         String expectedWakeup = 'unknown'
-      
+
         if (deviceInfo.nextExpectedWakeup) {
             expectedWakeup = new Date(deviceInfo.nextExpectedWakeup).toString()
         }
 
         logInfo "Device ${device.label} will set 'Sensitivity' to ${MOTION_SENSITIVITY[deviceInfoPending.sensitivity]} on ${expectedWakeup}"
       }
-      
+
       if (deviceInfoPending.commands) {
         logDebug "Device ${device.label} will set the commands ${deviceInfoPending.commands} on next wakeup"
       }
@@ -130,3 +158,9 @@ private String convertToLocalTimeString(final Date dt) {
     return dt.toString()
   }
 }
+
+@Field final static Map<Integer, String> MOTION_SENSITIVITY = [
+  0: 'high',
+  1: 'medium',
+  2: 'low',
+]
