@@ -31,6 +31,8 @@
  *  2021-08-16: Watchdog is now based on receipt of websocket messages. Should make reconnection more robust
  *              Remove unnecessary safe object traversal
  *              Reduce repetition in some of the code
+ *  2022-05-24: Added code to protect from NPE when parsing unknown sensor type. 
+ *              (fix for glassbreak sensors crashing the createChildDevices call)
  */
 
 import groovy.json.JsonSlurper
@@ -745,31 +747,34 @@ def createDevice(deviceInfo) {
   }
   if (!d) {
     //devices that have drivers that store in devices
+    if (DEVICE_TYPES[deviceInfo.deviceType]) {
     log.warn "Creating a ${DEVICE_TYPES[deviceInfo.deviceType].name} (${deviceInfo.deviceType}) with dni: ${getFormattedDNI(deviceInfo.zid)}"
-    try {
-      d = addChildDevice("ring-hubitat-codahq", DEVICE_TYPES[deviceInfo.deviceType].name, getFormattedDNI(deviceInfo.zid), data)
-      d.label = deviceInfo.name ?: DEVICE_TYPES[deviceInfo.deviceType].name
+      try {
+        d = addChildDevice("ring-hubitat-codahq", DEVICE_TYPES[deviceInfo.deviceType].name, getFormattedDNI(deviceInfo.zid), data)
+        d.label = deviceInfo.name ?: DEVICE_TYPES[deviceInfo.deviceType].name
 
-      d.updateDataValue("zid",  deviceInfo.zid)
-      d.updateDataValue("fingerprint", deviceInfo.fingerprint ?: "N/A")
-      d.updateDataValue("manufacturer", deviceInfo.manufacturerName ?: "Ring")
-      d.updateDataValue("serial", deviceInfo.serialNumber ?: "N/A")
-      d.updateDataValue("type", deviceInfo.deviceType)
-      d.updateDataValue("src", deviceInfo.src)
+        d.updateDataValue("zid",  deviceInfo.zid)
+        d.updateDataValue("fingerprint", deviceInfo.fingerprint ?: "N/A")
+        d.updateDataValue("manufacturer", deviceInfo.manufacturerName ?: "Ring")
+        d.updateDataValue("serial", deviceInfo.serialNumber ?: "N/A")
+        d.updateDataValue("type", deviceInfo.deviceType)
+        d.updateDataValue("src", deviceInfo.src)
 
-      //if (sensor.general.v2.deviceType == "security-panel") {
-      //  d.updateDataValue("hub-zid", hubNode.general.v2.zid)
-      //}
+        //if (sensor.general.v2.deviceType == "security-panel") {
+        //  d.updateDataValue("hub-zid", hubNode.general.v2.zid)
+        //}
 
-      log.warn "Successfully added ${deviceInfo.deviceType} with dni: ${getFormattedDNI(deviceInfo.zid)}"
-    }
-    catch (e) {
-      if (e.toString().replace(DEVICE_TYPES[deviceInfo.deviceType].name, "") ==
-        "com.hubitat.app.exception.UnknownDeviceTypeException: Device type '' in namespace 'ring-hubitat-codahq' not found") {
-        log.error '<b style="color: red;">The "' + DEVICE_TYPES[deviceInfo.deviceType].name + '" driver was not found and needs to be installed.</b>\r\n'
+        log.warn "Successfully added ${deviceInfo.deviceType} with dni: ${getFormattedDNI(deviceInfo.zid)}"
       }
-      else {
-        log.error "Error adding device: ${e}"
+      catch (e) {
+
+        if (e.toString().replace(DEVICE_TYPES[deviceInfo.deviceType].name, "") ==
+          "com.hubitat.app.exception.UnknownDeviceTypeException: Device type '' in namespace 'ring-hubitat-codahq' not found") {
+          log.error '<b style="color: red;">The "' + DEVICE_TYPES[deviceInfo.deviceType].name + '" driver was not found and needs to be installed.</b>\r\n'
+        }
+        else {
+          log.error "Error adding device: ${e}"
+        }
       }
     }
   }
